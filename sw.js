@@ -2,12 +2,12 @@
    • เก็บไฟล์เกมไว้เล่นออฟไลน์
    • เมื่อมีเวอร์ชันใหม่ จะดาวน์โหลดไว้ก่อนแล้ว "รอ" ให้ผู้เล่นกดปุ่มอัปเดตในเกม
    ★ ทุกครั้งที่แก้ไฟล์เกม ให้เปลี่ยน VERSION ด้านล่าง (เช่น v2.2.0 → v2.2.1) ผู้เล่นจะเห็นแจ้งเตือนอัปเดต */
-const VERSION = 'sooksan-v2.2.0';
+const VERSION = 'sooksan-v2.3.0';
 const FILES = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',
   'js/util.js', 'js/data.js', 'js/npcs.js', 'js/game.js', 'js/actions.js', 'js/events.js', 'js/routine.js',
   'js/life.js', 'js/aging.js', 'js/world.js', 'js/kids.js', 'js/politics.js', 'js/events2.js',
   'js/dialogue_data.js', 'js/dialogue_more.js', 'js/dialogue_more2.js', 'js/dialogue.js',
-  'js/ui.js', 'js/ui_extra.js', 'js/main.js'];
+  'js/ui.js', 'js/ui_extra.js', 'js/town3d.js', 'js/main.js'];
 
 self.addEventListener('install', e => {
   // โหลดไฟล์ใหม่จากเซิร์ฟเวอร์จริง (ไม่ใช้แคชของเบราว์เซอร์)

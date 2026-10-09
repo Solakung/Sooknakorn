@@ -57,10 +57,11 @@
   var oMap = UI.viewMap;
   UI.viewMap = function () {
     var html = oMap();
-    var tog = '<div class="seg maptog"><button class="' + (UI.mapMode === 'map' ? 'on' : '') + '" data-act="mapmode" data-v="map">🗺️ แผนที่</button><button class="' + (UI.mapMode === 'list' ? 'on' : '') + '" data-act="mapmode" data-v="list">📋 รายการ</button></div>';
+    var tog = '<div class="seg maptog"><button class="' + (UI.mapMode === 'town' ? 'on' : '') + '" data-act="mapmode" data-v="town">🧭 เดินเมือง</button><button class="' + (UI.mapMode === 'map' ? 'on' : '') + '" data-act="mapmode" data-v="map">🗺️ แผนที่</button><button class="' + (UI.mapMode === 'list' ? 'on' : '') + '" data-act="mapmode" data-v="list">📋 รายการ</button></div>';
     var cut = html.indexOf('<section class="zone">');
     if (cut < 0) return html + tog;
     var head = html.slice(0, cut), list = html.slice(cut);
+    if (UI.mapMode === 'town' && SK.Town) return head + tog + '<div class="town3d" id="town3d"></div><p class="muted t3note">เดินชนประตูตึกหรือกด "เข้า" เพื่อเข้าสถานที่ • แตะแผนที่ย่อเพื่อขยาย</p>';
     if (UI.mapMode === 'map') return head + tog + '<div class="mapwrap">' + UI.cityMap() + '<p class="muted">แตะสถานที่เพื่อเข้าไป • ตัวเลขสีส้ม = จำนวนคนที่อยู่ตอนนี้</p></div>';
     return head + tog + list;
   };
