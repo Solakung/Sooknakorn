@@ -602,7 +602,8 @@
   if (!HAS_DOM) return;
 
   var wrap = null, canvas = null, ctx2 = null, img = null, buf32 = null, depth = null, mini = null, mctx = null, miniBase = null;
-  var promptEl = null, helpEl = null, joyEl = null, knobEl = null;
+  var promptEl = null, helpEl = null, joyEl = null, knobEl = null, fsBtn = null, hudEl = null;
+  var fs = false, wantFs = false, fsReal = false, hudKey = '';
   var running = false, raf = 0, lastT = 0, cw = 0, ch = 0, shownLoc = '', coolUntil = 0, helpShown = false, lastMini = 0, nearLoc = null;
   var keys = {}, joy = { id: -1, ox: 0, oy: 0, x: 0, y: 0 }, look = { id: -1, x: 0, y: 0 }, sizeKey = '';
 
@@ -619,7 +620,10 @@
     helpEl = document.createElement('div'); helpEl.className = 't3-help'; helpEl.textContent = 'ลากนิ้วเพื่อมองรอบ/ขึ้น/ลง • จอยฝั่งซ้ายเพื่อเดิน • เดินชนประตูเพื่อเข้าไป';
     joyEl = document.createElement('div'); joyEl.className = 't3-joy'; knobEl = document.createElement('i'); joyEl.appendChild(knobEl);
     mini = document.createElement('canvas'); mini.className = 't3-mini'; mini.width = MW * 2; mini.height = MH * 2; mctx = mini.getContext('2d');
-    wrap.appendChild(canvas); wrap.appendChild(mini); wrap.appendChild(helpEl); wrap.appendChild(promptEl); wrap.appendChild(joyEl);
+    fsBtn = document.createElement('button'); fsBtn.type = 'button'; fsBtn.className = 't3-fs'; fsBtn.textContent = '⛶ เต็มจอ'; fsBtn.setAttribute('aria-label', 'เต็มจอ');
+    fsBtn.addEventListener('click', function (e) { e.stopPropagation(); setFs(!fs, true); });
+    hudEl = document.createElement('div'); hudEl.className = 't3-hud';
+    wrap.appendChild(canvas); wrap.appendChild(mini); wrap.appendChild(helpEl); wrap.appendChild(promptEl); wrap.appendChild(joyEl); wrap.appendChild(fsBtn); wrap.appendChild(hudEl);
     // แผนที่ย่อ (พื้นผิวคงที่)
     miniBase = document.createElement('canvas'); miniBase.width = MW * 2; miniBase.height = MH * 2;
     var bc = miniBase.getContext('2d'), tc = ['#6b6e76', '#cfcac0', '#7fb86e', '#6fa8dc', '#6b6e76', '#bdb4a6'];
@@ -665,6 +669,7 @@
       if (!running || (SK.UI && SK.UI.mdl)) return;
       var tg = e.target && e.target.tagName; if (tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT') return;
       var k = String(e.key || '').toLowerCase();
+      if (k === 'escape' && fs) { setFs(false, true); return; }
       if (['w', 'a', 's', 'd', 'q', 'e', 'r', 'f', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].indexOf(k) >= 0) { keys[k] = true; hideHelp(); e.preventDefault(); }
       if (k === 'enter' && nearLoc) enter(nearLoc);
     });
@@ -672,15 +677,26 @@
     window.addEventListener('blur', function () { keys = {}; });
     window.addEventListener('resize', function () { if (running) fit(); });
     window.addEventListener('orientationchange', function () { setTimeout(function () { if (running) fit(); }, 250); });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { if (running) fit(); });
+    var onFsChange = function () {
+      if (fs && fsReal && !(document.fullscreenElement || document.webkitFullscreenElement)) { fsReal = false; setFs(false, true); }
+    };
+    document.addEventListener('fullscreenchange', onFsChange); document.addEventListener('webkitfullscreenchange', onFsChange);
   }
   function hideHelp() { if (!helpShown && helpEl) { helpShown = true; helpEl.classList.add('off'); try { localStorage.setItem('sooksan_t3help', '1'); } catch (e) {} } }
 
   function fit() {
     var host = wrap.parentNode; if (!host) return;
-    var nav = document.querySelector('nav.tabs'), top = host.getBoundingClientRect().top, bottom = nav ? nav.getBoundingClientRect().top : window.innerHeight;
-    var hh = Math.max(280, Math.floor(bottom - top - 10));
-    host.style.height = hh + 'px';
-    cw = host.clientWidth; ch = hh;
+    if (fs) {
+      var v = window.visualViewport, vw = Math.round(v && v.width ? v.width : window.innerWidth), vh = Math.round(v && v.height ? v.height : window.innerHeight);
+      wrap.style.width = vw + 'px'; wrap.style.height = vh + 'px'; cw = vw; ch = vh;
+    } else {
+      wrap.style.width = ''; wrap.style.height = '';
+      var nav = document.querySelector('nav.tabs'), top = host.getBoundingClientRect().top, bottom = nav ? nav.getBoundingClientRect().top : window.innerHeight;
+      var hh = Math.max(280, Math.floor(bottom - top - 10));
+      host.style.height = hh + 'px';
+      cw = host.clientWidth; ch = hh;
+    }
     var iw = Math.round(clamp(Math.min(cw / 2, 400), 160, 400)), ih = Math.max(90, Math.round(iw * ch / Math.max(1, cw)));
     var k = iw + 'x' + ih;
     if (k !== sizeKey) {
@@ -689,6 +705,49 @@
     }
     cam.hfov = (iw >= ih ? 72 : 66) * Math.PI / 180;
   }
+
+  // ---- โหมดเต็มจอ: ครอบทั้งหน้าจอ (ใช้ได้ทุกเครื่อง) + ขอเต็มจอจริง/ล็อกแนวนอนเมื่อเครื่องรองรับ ----
+  function leaveReal() {
+    try { if (document.fullscreenElement || document.webkitFullscreenElement) { var ex = document.exitFullscreen || document.webkitExitFullscreen; var pr = ex.call(document); if (pr && pr.catch) pr.catch(function () {}); } } catch (e) {}
+    try { if (window.screen && screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
+    fsReal = false;
+  }
+  function updateHud() {
+    if (!hudEl) return;
+    var S = SK.S; if (!S) { hudEl.textContent = ''; return; }
+    var sl = Math.min(S.slot || 0, 2);
+    hudEl.textContent = (SK.SLOT_ICON ? SK.SLOT_ICON[sl] : '') + ' ' + (SK.SLOTS ? SK.SLOTS[sl] : '') + (S.weather && S.weather.icon ? ' • ' + S.weather.icon : '') + ' • 💵 ' + (SK.fmt ? SK.fmt(S.cash) : S.cash);
+  }
+  function setFs(on, user) {
+    on = !!on;
+    if (on === fs) { if (on) fit(); return; }
+    fs = on; wrap.classList.toggle('t3-full', on);
+    document.documentElement.classList.toggle('t3-lock', on);
+    fsBtn.textContent = on ? '✕ ออก' : '⛶ เต็มจอ'; fsBtn.setAttribute('aria-label', on ? 'ออกจากโหมดเต็มจอ' : 'เต็มจอ');
+    if (user) wantFs = on;
+    if (on) {
+      if (user) {
+        try {
+          var rq = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
+          if (rq) {
+            var pr = rq.call(wrap);
+            var ok = function () { fsReal = true; try { if (window.screen && screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(function () {}); } catch (e) {} };
+            if (pr && pr.then) pr.then(ok).catch(function () {}); else ok();
+          }
+        } catch (e) {}
+      }
+    } else leaveReal();
+    fit(); updateHud(); hideHelp();
+  }
+  // ออกจากหน้าเมืองเดิน (เข้าตึก/เปลี่ยนแท็บ): คืนหน้าจอปกติ แต่จำไว้ว่าผู้เล่นอยากเล่นเต็มจอ
+  function detachFs() {
+    if (!fs) return;
+    fsReal = false; leaveReal(); fs = false;
+    if (wrap) { wrap.classList.remove('t3-full'); wrap.style.width = ''; wrap.style.height = ''; }
+    if (fsBtn) fsBtn.textContent = '⛶ เต็มจอ';
+    document.documentElement.classList.remove('t3-lock');
+  }
+  T.setFullscreen = function (on) { if (wrap) setFs(on, true); };
 
   function enter(id) {
     if (!id || performance.now() < coolUntil) return;
@@ -715,6 +774,7 @@
     if (document.hidden || (SK.UI && SK.UI.mdl)) return;
     var S = SK.S, G = SK.G;
     refresh(S, G);
+    if (fs && envKey !== hudKey) { hudKey = envKey; updateHud(); }
     var fwd = 0, str = 0, turn = 0, lk = 0;
     if (keys.w || keys.arrowup) fwd += 1; if (keys.s || keys.arrowdown) fwd -= 1;
     if (keys.d) str += 1; if (keys.a) str -= 1;
@@ -783,7 +843,8 @@
     var S = SK.S;
     try { helpShown = localStorage.getItem('sooksan_t3help') === '1'; } catch (e) {}
     helpEl.classList.toggle('off', helpShown);
-    fit();
+    if (wantFs && !fs) setFs(true, false); else fit();
+    updateHud();
     if (!spawned || (S && S.at && S.at !== lastAt && CITY.locs[S.at])) { spawnAt(S && S.at ? S.at : 'home'); spawned = true; }
     lastAt = S ? S.at : null;
     coolUntil = performance.now() + 700;
@@ -800,7 +861,7 @@
       try {
         var host = document.getElementById('town3d');
         if (host && UI.screen === 'game' && UI.tab === 'map' && !UI.loc && UI.mapMode === 'town') T.mount(host);
-        else if (running) { stop(); if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap); }
+        else { if (running) stop(); if (wrap) { detachFs(); if (wrap.parentNode) wrap.parentNode.removeChild(wrap); } }
       } catch (e) { if (root.console) console.error('town3d', e); }
     };
   }

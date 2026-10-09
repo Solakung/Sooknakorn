@@ -331,3 +331,13 @@ button, .act, .loc, .choice { touch-action: manipulation; }
 .t3-joy.on { display: block; }
 .t3-joy i { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; background: rgba(255,255,255,.75); box-shadow: 0 1px 6px rgba(0,0,0,.3); }
 .t3note { margin: 6px 4px 0; font-size: 12px; }
+
+/* เต็มจอ */
+html.t3-lock, html.t3-lock body { overflow: hidden; overscroll-behavior: none; }
+.t3-wrap.t3-full { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 45; background: #000; }
+.t3-fs { position: absolute; left: max(8px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top)); z-index: 2; padding: 7px 12px; border: 0; border-radius: 14px; background: rgba(20,24,34,.62); color: #fff; font: inherit; font-size: 12.5px; cursor: pointer; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.t3-help { top: 46px; left: max(10px, env(safe-area-inset-left)); }
+.t3-hud { display: none; position: absolute; top: max(8px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 14px; background: rgba(20,24,34,.62); color: #fff; font-size: 11.5px; white-space: nowrap; pointer-events: none; }
+.t3-full .t3-hud { display: block; }
+.t3-full .t3-mini { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
+.t3-full .t3-prompt { bottom: max(14px, env(safe-area-inset-bottom)); }
