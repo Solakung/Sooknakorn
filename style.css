@@ -341,3 +341,5 @@ html.t3-lock, html.t3-lock body { overflow: hidden; overscroll-behavior: none; }
 .t3-full .t3-hud { display: block; }
 .t3-full .t3-mini { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
 .t3-full .t3-prompt { bottom: max(14px, env(safe-area-inset-bottom)); }
+
+.t3-fps { position: absolute; left: 8px; bottom: 8px; z-index: 3; padding: 3px 8px; border-radius: 8px; background: rgba(0,0,0,.6); color: #7dff9b; font: 11px/1.3 ui-monospace, monospace; pointer-events: none; }

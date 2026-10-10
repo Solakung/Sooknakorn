@@ -275,7 +275,7 @@
     }
   }
 
-  var W = 0, H = 0, RDX = null, RDY = null, COLAZ = null;
+  var W = 0, H = 0, RDX = null, RDY = null, COLAZ = null, POOL = [];
   T.renderFrame = function (buf, depth, w, h, cam, env, sprites, time) {
     ENV = env; TIME = time || 0;
     var eye = cam.eye, th = Math.tan(cam.hfov / 2), f = (w / 2) / th;
@@ -376,18 +376,19 @@
       }
     }
     // ---- สไปรต์ (ไกล → ใกล้) ----
-    var inv = 1 / (plX * dirY - dirX * plY), list = [], si;
+    var inv = 1 / (plX * dirY - dirX * plY), n = 0, si;
     for (si = 0; si < sprites.length; si++) {
       var sp = sprites[si], dx = sp.x - cx, dyy = sp.y - cyy;
       var tx = inv * (dirY * dx - dirX * dyy), ty = inv * (-plY * dx + plX * dyy);
       if (ty < 0.25 || ty > maxD) continue;
       var sxm = (w / 2) * (1 + tx / ty), shh = f * sp.h / ty, sww = shh * (sp.asp || 1);
       if (sxm + sww / 2 < 0 || sxm - sww / 2 > w) continue;
-      list.push({ sp: sp, ty: ty, sx: sxm, sh: shh, sw: sww });
+      var slot = POOL[n]; if (!slot) slot = POOL[n] = { sp: null, ty: 0, sx: 0, sh: 0, sw: 0 };
+      slot.sp = sp; slot.ty = ty; slot.sx = sxm; slot.sh = shh; slot.sw = sww; n++;
     }
-    list.sort(function (a, b) { return b.ty - a.ty; });
-    for (si = 0; si < list.length; si++) {
-      var it = list[si], s2 = it.sp, tex = s2.tex, bot = hz + (eye - (s2.z || 0)) * f / it.ty, topY = bot - it.sh, left = it.sx - it.sw / 2;
+    for (var qa = 1; qa < n; qa++) { var qk = POOL[qa], qj = qa - 1; while (qj >= 0 && POOL[qj].ty < qk.ty) { POOL[qj + 1] = POOL[qj]; qj--; } POOL[qj + 1] = qk; }
+    for (si = 0; si < n; si++) {
+      var it = POOL[si], s2 = it.sp, tex = s2.tex, bot = hz + (eye - (s2.z || 0)) * f / it.ty, topY = bot - it.sh, left = it.sx - it.sw / 2;
       var xa = Math.max(0, Math.floor(left)), xb = Math.min(w, Math.ceil(left + it.sw)), ya = Math.max(0, Math.floor(topY)), yb = Math.min(h, Math.ceil(bot));
       var ft3 = clamp((it.ty - fs) * fr, 0, 1), bob = s2.emit ? 1 : 0;
       var tw = tex.w, th2 = tex.h, px = tex.px;
@@ -498,43 +499,47 @@
   function rng(n) { return Math.random() * n; }
 
   T.initWorld = function (npcPed) {
-    peds = []; cars = [];
+    peds = []; cars = []; sprDirty = true;
     var n = npcPed || 18, tries = 0;
     while (peds.length < n && tries++ < 400) {
       var x = 1 + rng(MW - 2), y = 1 + rng(MH - 2);
       if (T.solid(x, y)) continue;
-      peds.push({ x: x, y: y, a: rng(6.28), sp: 0.5 + rng(0.7), t: rng(3), tex: T.emojiSprite(PEDS[(rng(PEDS.length)) | 0], 24) });
+      var pt = T.emojiSprite(PEDS[(rng(PEDS.length)) | 0], 24);
+      peds.push({ x: x, y: y, a: rng(6.28), sp: 0.5 + rng(0.7), t: rng(3), tex: pt, spr: { x: x, y: y, z: 0, h: 0.62, asp: 1, tex: pt } });
     }
     // รถบนถนน: 2 เลนต่อถนน
-    HB.forEach(function (b) { for (var k = 0; k < 3; k++) cars.push({ dir: k % 2 ? 1 : -1, ax: 'x', lane: k % 2 ? b[0] + 0.55 : b[1] + 0.45, p: 1 + rng(MW - 2), sp: 2 + rng(2), tex: T.emojiSprite(CARS[(rng(CARS.length)) | 0], 24) }); });
-    VB.forEach(function (b) { for (var k = 0; k < 4; k++) cars.push({ dir: k % 2 ? 1 : -1, ax: 'y', lane: k % 2 ? b[0] + 0.55 : b[1] + 0.45, p: 1 + rng(MH - 2), sp: 2 + rng(2), tex: T.emojiSprite(CARS[(rng(CARS.length)) | 0], 24) }); });
+    function addCar(ax, b, k, len) {
+      var ct = T.emojiSprite(CARS[(rng(CARS.length)) | 0], 24), c = { dir: k % 2 ? 1 : -1, ax: ax, lane: k % 2 ? b[0] + 0.55 : b[1] + 0.45, p: 1 + rng(len - 2), sp: 2 + rng(2), tex: ct, spr: { x: 0, y: 0, z: 0, h: 0.62, asp: 1.2, tex: ct } };
+      cars.push(c); placeCar(c);
+    }
+    HB.forEach(function (b) { for (var k = 0; k < 3; k++) addCar('x', b, k, MW); });
+    VB.forEach(function (b) { for (var k = 0; k < 4; k++) addCar('y', b, k, MH); });
   };
+  function placeCar(c) { if (c.ax === 'x') { c.spr.x = c.p; c.spr.y = c.lane; } else { c.spr.x = c.lane; c.spr.y = c.p; } }
   function stepWorld(dt) {
     var i, p;
     for (i = 0; i < peds.length; i++) {
       p = peds[i]; p.t -= dt;
       var nx = p.x + Math.cos(p.a) * p.sp * dt, ny = p.y + Math.sin(p.a) * p.sp * dt;
       if (p.t < 0 || T.solid(nx, ny)) { p.a += (Math.random() - 0.5) * 3.2 + (T.solid(nx, ny) ? 2.4 : 0); p.t = 1.5 + rng(4); }
-      else { p.x = nx; p.y = ny; }
+      else { p.x = nx; p.y = ny; p.spr.x = nx; p.spr.y = ny; }
     }
     for (i = 0; i < cars.length; i++) {
       p = cars[i]; p.p += p.dir * p.sp * dt;
       var lim = p.ax === 'x' ? MW - 1 : MH - 2;
       if (p.p > lim) p.p = 1; else if (p.p < 1) p.p = lim;
+      placeCar(p);
     }
   }
+  var allSprites = [], sprDirty = true;
   function worldSprites() {
-    var out = [], i, p;
-    for (i = 0; i < staticSprites.length; i++) out.push(staticSprites[i]);
-    for (i = 0; i < npcSprites.length; i++) out.push(npcSprites[i]);
-    for (i = 0; i < signSprites.length; i++) out.push(signSprites[i]);
-    for (i = 0; i < peds.length; i++) { p = peds[i]; out.push({ x: p.x, y: p.y, z: 0, h: 0.62, asp: 1, tex: p.tex }); }
-    for (i = 0; i < cars.length; i++) {
-      p = cars[i];
-      // รถวิ่งผ่านแม่น้ำเฉพาะบนสะพาน (ถนนแนวตั้งต่อเนื่องอยู่แล้ว)
-      out.push(p.ax === 'x' ? { x: p.p, y: p.lane, z: 0, h: 0.62, asp: 1.2, tex: p.tex } : { x: p.lane, y: p.p, z: 0, h: 0.62, asp: 1.2, tex: p.tex });
+    if (sprDirty) {
+      var i; allSprites = staticSprites.concat(npcSprites, signSprites);
+      for (i = 0; i < peds.length; i++) allSprites.push(peds[i].spr);
+      for (i = 0; i < cars.length; i++) allSprites.push(cars[i].spr);
+      sprDirty = false;
     }
-    return out;
+    return allSprites;
   }
 
   // ย้ายผู้เล่นแบบเลื่อนไถลตามกำแพง + ชนต้นไม้
@@ -591,6 +596,7 @@
         npcSprites.push({ x: px, y: py, z: 0, h: 0.66, asp: 1, tex: T.emojiSprite(np.icon || '🧑', 24) });
       });
     });
+    sprDirty = true;
     var pop = S && S.city ? S.city.pop : 85000, want = Math.round(clamp(14 + ((pop - (SK.BASE_POP || 85000)) / 3000), 12, 30));
     if (peds.length !== want) T.initWorld(want);
   }
@@ -606,6 +612,7 @@
   var fs = false, wantFs = false, fsReal = false, hudKey = '';
   var running = false, raf = 0, lastT = 0, cw = 0, ch = 0, shownLoc = '', coolUntil = 0, helpShown = false, lastMini = 0, nearLoc = null;
   var keys = {}, joy = { id: -1, ox: 0, oy: 0, x: 0, y: 0 }, look = { id: -1, x: 0, y: 0 }, sizeKey = '';
+  var aim = { ang: 0, pitch: 0 }, vF = 0, vS = 0, qscale = 1, renderEma = 6, qCool = 0, qUp = 0, fpsEl = null, fpsAcc = 0, fpsN = 0, fpsT = 0;
 
   function esc(s) { return SK.UI && SK.UI.esc ? SK.UI.esc(s) : String(s).replace(/[&<>"]/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]; }); }
 
@@ -615,7 +622,7 @@
     wrap = document.createElement('div');
     wrap.className = 't3-wrap'; wrap.setAttribute('role', 'application'); wrap.setAttribute('aria-label', 'เมืองสุขนคร มุมมองบุคคลที่หนึ่ง ใช้ปุ่ม WASD หรือลากเพื่อมอง'); wrap.tabIndex = 0;
     canvas = document.createElement('canvas'); canvas.className = 't3-cv';
-    ctx2 = canvas.getContext('2d', { alpha: false });
+    ctx2 = canvas.getContext('2d', { alpha: false, desynchronized: true });
     promptEl = document.createElement('div'); promptEl.className = 't3-prompt';
     helpEl = document.createElement('div'); helpEl.className = 't3-help'; helpEl.textContent = 'ลากนิ้วเพื่อมองรอบ/ขึ้น/ลง • จอยฝั่งซ้ายเพื่อเดิน • เดินชนประตูเพื่อเข้าไป';
     joyEl = document.createElement('div'); joyEl.className = 't3-joy'; knobEl = document.createElement('i'); joyEl.appendChild(knobEl);
@@ -623,6 +630,7 @@
     fsBtn = document.createElement('button'); fsBtn.type = 'button'; fsBtn.className = 't3-fs'; fsBtn.textContent = '⛶ เต็มจอ'; fsBtn.setAttribute('aria-label', 'เต็มจอ');
     fsBtn.addEventListener('click', function (e) { e.stopPropagation(); setFs(!fs, true); });
     hudEl = document.createElement('div'); hudEl.className = 't3-hud';
+    try { if (/fps/.test(location.hash) || localStorage.getItem('sooksan_t3fps') === '1') { fpsEl = document.createElement('div'); fpsEl.className = 't3-fps'; wrap.appendChild(fpsEl); } } catch (e) {}
     wrap.appendChild(canvas); wrap.appendChild(mini); wrap.appendChild(helpEl); wrap.appendChild(promptEl); wrap.appendChild(joyEl); wrap.appendChild(fsBtn); wrap.appendChild(hudEl);
     // แผนที่ย่อ (พื้นผิวคงที่)
     miniBase = document.createElement('canvas'); miniBase.width = MW * 2; miniBase.height = MH * 2;
@@ -655,8 +663,8 @@
         if (d > R) { dx = dx / d * R; dy = dy / d * R; }
         joy.x = dx / R; joy.y = dy / R; knobEl.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
       } else if (e.pointerId === look.id) {
-        var k = 1.25 * cam.hfov / Math.max(1, cw ? wrap.clientWidth : 360);
-        cam.ang += (e.clientX - look.x) * k; cam.pitch = clamp(cam.pitch - (e.clientY - look.y) * k, -0.62, 0.9);
+        var k = 1.25 * cam.hfov / Math.max(1, cw || 360);
+        aim.ang += (e.clientX - look.x) * k; aim.pitch = clamp(aim.pitch - (e.clientY - look.y) * k, -0.62, 0.9);
         look.x = e.clientX; look.y = e.clientY;
       }
     });
@@ -697,7 +705,9 @@
       host.style.height = hh + 'px';
       cw = host.clientWidth; ch = hh;
     }
-    var iw = Math.round(clamp(Math.min(cw / 2, 400), 160, 400)), ih = Math.max(90, Math.round(iw * ch / Math.max(1, cw)));
+    var base = Math.min(cw / 2, 400), iw = Math.round(clamp(base * qscale, Math.min(140, base), 400));
+    qscale = clamp(iw / base, 0.3, 1);
+    var ih = Math.max(90, Math.round(iw * ch / Math.max(1, cw)));
     var k = iw + 'x' + ih;
     if (k !== sizeKey) {
       sizeKey = k; canvas.width = iw; canvas.height = ih;
@@ -758,14 +768,16 @@
 
   function spawnAt(id) {
     var L = CITY.locs[id] || CITY.locs.home; if (!L) return;
-    cam.x = L.front.x + 0.5; cam.y = L.front.y + 0.5; cam.pitch = 0; cam.eye = 0.55;
+    cam.x = L.front.x + 0.5; cam.y = L.front.y + 0.5; cam.pitch = 0; cam.eye = 0.55; vF = vS = 0;
     if (L.door) cam.ang = L.door.face === 'S' ? -Math.PI / 2 : Math.PI / 2;
     else cam.ang = Math.PI / 2;
     // เริ่มห่างจากประตูเล็กน้อยให้เห็นหน้าตึก
     var bx = cam.x - Math.cos(cam.ang) * 1.6, by = cam.y - Math.sin(cam.ang) * 1.6;
     if (!T.solid(bx, by)) { cam.x = bx; cam.y = by; }
+    aim.ang = cam.ang; aim.pitch = cam.pitch;
   }
 
+  T.teleport = function (x, y, ang, pitch) { cam.x = x; cam.y = y; cam.ang = ang; cam.pitch = pitch || 0; aim.ang = cam.ang; aim.pitch = cam.pitch; vF = vS = 0; };
   var movePhase = 0, lastAt = null, spawned = false;
   function frame(t) {
     if (!running) return;
@@ -781,12 +793,17 @@
     if (keys.arrowright || keys.e) turn += 1; if (keys.arrowleft || keys.q) turn -= 1;
     if (keys.r) lk += 1; if (keys.f) lk -= 1;
     if (joy.id >= 0) { fwd += -joy.y; str += joy.x; }
-    cam.ang += turn * 1.9 * dt; cam.pitch = clamp(cam.pitch + lk * 1.3 * dt, -0.62, 0.9);
-    var mv = Math.sqrt(fwd * fwd + str * str); if (mv > 1) { fwd /= mv; str /= mv; mv = 1; }
+    aim.ang += turn * 1.9 * dt; aim.pitch = clamp(aim.pitch + lk * 1.3 * dt, -0.62, 0.9);
+    // ทำให้การหัน/เดินนุ่มนวล: เลื่อนเข้าหาเป้าหมายแบบไม่ขึ้นกับเฟรมเรต
+    var sm = 1 - Math.exp(-dt * 26);
+    cam.ang += (aim.ang - cam.ang) * sm; cam.pitch += (aim.pitch - cam.pitch) * sm;
+    var mv0 = Math.sqrt(fwd * fwd + str * str); if (mv0 > 1) { fwd /= mv0; str /= mv0; }
+    var ka = 1 - Math.exp(-dt * 16); vF += (fwd - vF) * ka; vS += (str - vS) * ka;
+    var mv = Math.sqrt(vF * vF + vS * vS);
     if (mv > 0.02) {
       var sp = 3.4 * dt, ca = Math.cos(cam.ang), sa = Math.sin(cam.ang);
-      var door = tryMove(cam.x + (ca * fwd - sa * str) * sp, cam.y + (sa * fwd + ca * str) * sp);
-      if (door && fwd > 0.3) enter(door);
+      var door = tryMove(cam.x + (ca * vF - sa * vS) * sp, cam.y + (sa * vF + ca * vS) * sp);
+      if (door && vF > 0.3) enter(door);
       movePhase += dt * 9 * mv;
     }
     cam.eye = 0.55 + (mv > 0.02 ? Math.sin(movePhase) * 0.012 : 0);
@@ -810,9 +827,17 @@
       } else { promptEl.classList.remove('on'); }
     }
     if (!buf32) return;
+    var r0 = performance.now();
     T.renderFrame(buf32, depth, canvas.width, canvas.height, cam, env, worldSprites(), t / 1000);
     ctx2.putImageData(img, 0, 0);
-    if (t - lastMini > 120) { lastMini = t; drawMini(); }
+    var rm = performance.now() - r0; renderEma = renderEma * 0.92 + rm * 0.08;
+    // ปรับความละเอียดอัตโนมัติ: เครื่องช้า → ลดความละเอียดลงเพื่อให้ลื่น, เครื่องแรง → คืนความละเอียด
+    if (qCool > 0) qCool--;
+    if (renderEma > 11 && qCool === 0 && canvas.width > Math.min(140, cw / 2) + 1) { qscale = qscale * 0.86; qCool = 40; qUp = 0; fit(); }
+    else if (renderEma < 4.5 && qscale < 1) { if (++qUp > 150) { qscale = Math.min(1, qscale * 1.12); qUp = 0; qCool = 40; fit(); } }
+    else qUp = 0;
+    if (fpsEl) { fpsAcc += dt; fpsN++; if (fpsAcc > 0.5) { fpsEl.textContent = Math.round(fpsN / fpsAcc) + ' fps • ' + canvas.width + 'x' + canvas.height + ' • ' + renderEma.toFixed(1) + ' ms'; fpsAcc = 0; fpsN = 0; } }
+    if (t - lastMini > 200) { lastMini = t; drawMini(); }
   }
 
   function drawMini() {
